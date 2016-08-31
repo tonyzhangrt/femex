@@ -104,7 +104,52 @@ classdef FEM < handle
             BCLoadVector = this.Assembler.assemrbc(this.Promoted.nodes,...
                 this.Edge.Qnodes, BC, this.Edge.Ref, this.Edge.Weights, Fcn);
         end
+
+        function [GradLoadVector] = assemgradl(this, Fcn_X, Fcn_Y) 
+            GradLoadVector = this.Assembler.assemgradl(this.Promoted.nodes,...
+                this.Promoted.elems, this.Facet.Ref, this.Facet.RefX, this.Facet.RefY,...
+                this.Facet.Weights, Fcn_X, Fcn_Y);
+        end
         
+        function [MassEnergy] = assem_massenergy(this, qFcn, pFcn)
+            [MassEnergy] = this.Assembler.assemble_massenergy(this.Promoted.nodes, this.Promoted.elems, this.Facet.Ref, this.Facet.Weights, qFcn, pFcn);
+        end
+
+        function [StiffEnergy] = assem_stiffenergy(this, qFcn, pFcn)
+            [StiffEnergy] = this.Assembler.assemble_stiffenergy(this.Promoted.nodes, this.Promoted.elems, this.Facet.RefX, this.Facet.RefY, ...
+                            this.Facet.Weights, qFcn, pFcn);
+        end
+
+        function [MassEnergyGrad] = assem_massenergygrad(this, qFcn, pFcn)
+            [MassEnergyGrad] = this.Assembler.assemble_massenergygrad(this.Promoted.nodes, this.Promoted.elems, this.Facet.Ref, ...
+                                this.Facet.Weights, qFcn, pFcn);
+        end
+
+        function [StiffEnergyGrad] = assem_stiffenergygrad(this, qFcn, pFcn)
+            [StiffEnergyGrad] = this.Assembler.assemble_stiffenergygrad(this.Promoted.nodes, this.Promoted.elems, this.Facet.RefX, ...
+                                this.Facet.RefY, this.Facet.Weights, qFcn, pFcn);
+        end
+
+        function [MassGrad] = assem_massgrad(this, Fcn_r, Fcn_c)
+            MassGrad = this.Assembler.assemble_massgrad(this.Promoted.nodes, this.Promoted.elems, this.Facet.Ref, this.Facet.Weights, Fcn_r, Fcn_c);            
+        end
+        
+        function [StiffGrad] = assem_stiffgrad(this, Fcn_r, Fcn_c)
+            StiffGrad = this.Assembler.assemble_stiffgrad(this.Promoted.nodes, this.Promoted.elems, this.Facet.RefX, this.Facet.RefY,...
+                this.Facet.Weights, Fcn_r, Fcn_c);            
+        end
+
+        function [QWeightVector] = assemb_q2itrans(this)
+            [QWeightVector] = this.Assembler.assemble_q2itrans(this.Promoted.nodes, this.Promoted.elems, this.Facet.Ref, this.Facet.Weights);
+        end
+
+        function [LoadTransQVector] = assem_loadtrans(this, PVector)
+            LoadTransQVector = this.Assembler.assemble_loadtrans(this.Promoted.nodes, this.Promoted.elems, this.Facet.Ref, this.Facet.Weights, PVector);
+        end
+        
+        function [TransPVector] = assem_p2qtrans(this, QVector)
+            TransPVector = this.Assembler.assemble_p2qtrans(this.Promoted.nodes, this.Promoted.elems, this.Facet.Ref, QVector);
+        end
         
     end
     

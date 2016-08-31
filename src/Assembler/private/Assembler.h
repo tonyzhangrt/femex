@@ -81,6 +81,14 @@ public:
 			MatlabPtr Nodes, MatlabPtr eRobin,
 			MatlabPtr Ref, MatlabPtr Weights, MatlabPtr Fcn);
 
+	/*
+	 * Load Gradient Potential
+	 * integral on f_x \phi_j_x + f_y \phi_j_y
+	 */
+	void AssembleGradLoad(Real_t* &pLoad, MatlabPtr Nodes, MatlabPtr Elems, 
+			MatlabPtr Ref, MatlabPtr RefX,MatlabPtr RefY,
+			MatlabPtr Weights, MatlabPtr Fcn_X, MatlabPtr Fcn_Y);
+
 	// Auxiliary
 	void Qnodes2D(Real_t*& Coords, MatlabPtr Nodes, MatlabPtr QNodes, MatlabPtr Elems);
 	void Qnodes1D(Real_t*& Coords, MatlabPtr Nodes, MatlabPtr QNodes, MatlabPtr Edges);
@@ -106,7 +114,50 @@ public:
 			MatlabPtr Nodes, MatlabPtr Elems, MatlabPtr Ref, MatlabPtr RefX,MatlabPtr RefY,
 			MatlabPtr Weights, MatlabPtr Fcn_X, MatlabPtr Fcn_Y);
 
+	// Assemble the integral of u_i M_ij u_j 
+	void AssembleMassEnergy(Real_t* &MassEnergy,
+			MatlabPtr Nodes, MatlabPtr Elems,MatlabPtr Ref,
+			MatlabPtr Weights, MatlabPtr QFcn, MatlabPtr PFcn);
 
+	// Assemble the integral of u_i S_ij u_j
+	void AssembleStiffEnergy(Real_t* &StiffEnergy,
+			MatlabPtr Nodes, MatlabPtr Elems, MatlabPtr RefX,
+			MatlabPtr RefY, MatlabPtr Weights, MatlabPtr QFcn, MatlabPtr PFcn);
+
+	// Assemable the gradient of u_i M_ij u_j
+	void AssembleMassEnergyGrad(Real_t* &MassEnergyGrad,
+			MatlabPtr Nodes, MatlabPtr Elems,MatlabPtr Ref,
+			MatlabPtr Weights, MatlabPtr QFcn, MatlabPtr PFcn);
+
+	// Assemble the gradient of u_i S_ij u_j
+	void AssembleStiffEnergyGrad(Real_t* &StiffEnergyGrad,
+			MatlabPtr Nodes, MatlabPtr Elems, MatlabPtr RefX,
+			MatlabPtr RefY, MatlabPtr Weights, MatlabPtr QFcn, MatlabPtr PFcn);
+
+	// Assemble v_i grad A_ij u_j
+	void AssembleMassGrad(Real_t* &MassGrad,
+		MatlabPtr Nodes, MatlabPtr Elems, MatlabPtr Ref,
+		MatlabPtr Weights, MatlabPtr rPFcn, MatlabPtr cPFcn);
+
+	// Assemble v_i grad A_ij u_j
+	void AssembleStiffGrad(Real_t* &StiffGrad,
+		MatlabPtr Nodes, MatlabPtr Elems, MatlabPtr RefX, MatlabPtr RefY,
+		MatlabPtr Weights, MatlabPtr rPFcn, MatlabPtr cPFcn);
+
+	// Assemble Q2int trans(i.e. weights on qnodes)
+	void AssembleQ2IntTrans(Real_t* &qWeights,
+			MatlabPtr Nodes, MatlabPtr Elems,MatlabPtr Ref,
+			MatlabPtr Weights);
+
+	// Apply P^Q_I transpose to PFunc
+	void AssembleLoadTrans(Real_t* &qLoad,
+		MatlabPtr Nodes, MatlabPtr Elems,MatlabPtr Ref,
+		MatlabPtr Weights, MatlabPtr PFcn);
+
+	// Apply P2Q transpose to QFunc
+	void AssembleP2QTrans(Real_t* &PFcn,
+		MatlabPtr Nodes, MatlabPtr Elems,MatlabPtr Ref,
+		MatlabPtr QFcn);
 
 	/*
 	 * load matrix

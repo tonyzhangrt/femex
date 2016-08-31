@@ -1,29 +1,33 @@
-function  [fem, neumann] = test(prec, min_area)
+% function  [fem, neumann] = test(prec, min_area)
 % TEST solves Neumann/Dirichlet/Robin boundary condition PDE with h-p
 % finite element method.
 
+prec = 2;
+min_area = 1/(2*40*40);
+
+
 addpath(genpath('~/Documents/github/femex'));
 
-fem = FEM([0 0 1 0 1 1 0 1]', prec, min_area, [-0.25 -0.25 1.25 -0.25 1.25 1.25 -0.25 1.25]');
+fem = FEM([0 0 1 0 1 1 0 1]', prec, min_area, [-0.25 -0.25 1.25 -0.25 1.25 1.25 -0.25 1.25]'); % fem with pml
 
-N = size(fem.Promoted.nodes, 2);
+N = size(fem.Promoted.nodes, 2); % 
 numofnodes = fem.Num_nodes;
 
 % boundary = Boundary(Dirichlet);
 boundary = Boundary();
 
 
-boundary.set_boundary('x - 1.25');
+boundary.set_boundary('x - 1.25'); % set boundary position
 boundary.set_boundary('y - 1.25');
 boundary.set_boundary('x + 0.25');
 boundary.set_boundary('y + 0.25');
 
 [bc1.bc, bc2.bc, bc3.bc, bc4.bc] = boundary.get_boundary(fem.Promoted.edges, fem.Promoted.nodes, 4);
 
-boundary.setDirichlet(bc1.bc);
+boundary.setDirichlet(bc1.bc); 
 boundary.setDirichlet(bc2.bc);
 
-[dofs, ndofs] = boundary.dofs(N);
+[dofs, ndofs] = boundary.dofs(N); % get degree of freedom and degree of not freedom
 
 % bc1.qnodes1D = fem.Assembler.qnodes1D(fem.Promoted.nodes, fem.Edge.Qnodes, bc1.bc);
 % bc2.qnodes1D = fem.Assembler.qnodes1D(fem.Promoted.nodes, fem.Edge.Qnodes ,bc2.bc);
@@ -172,5 +176,5 @@ quiver3(fem.Promoted.nodes(1,:), fem.Promoted.nodes(2,:), fem.Solution', u, v, -
 hold on
 trimesh(fem.TriMesh', fem.Promoted.nodes(1,1:numofnodes), ...
     fem.Promoted.nodes(2, 1:numofnodes), fem.Solution(1:numofnodes));
-end
+% end
 

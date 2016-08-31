@@ -25,7 +25,7 @@ methods
   function [I, J, V] = assema(this, pnodes, pelems, ref_fnk, weights, extern)
   	[I, J, V] = Assembler_('assema', this.id_, pnodes, pelems, ref_fnk, weights, extern);
   end
-  
+
   function [I, J, V] = assems(this, pnodes, pelems, ref_gradx, ref_grady, weights, extern)
   	[I, J, V] = Assembler_('assems', this.id_, pnodes, pelems, ref_gradx, ref_grady, weights, extern);
   end
@@ -42,6 +42,10 @@ methods
     [I, J, V] = Assembler_('assemlbc', this.id_, pnodes, pedges, ref, weights, extern);
   end
   
+  function [L] = assemgradl(this, pnodes, pelems, ref, ref_gradx, ref_grady, weights, extern_x, extern_y)
+    [L] = Assembler_('assemgradl', this.id_, pnodes, pelems, ref, ref_gradx, ref_grady, weights, extern_x, extern_y);
+  end
+
   function [C] = qnodes2D(this, pnodes, qnodes, pelems) 
   	[C] = Assembler_('qnodes2D', this.id_, pnodes, qnodes, pelems);
   end
@@ -61,7 +65,44 @@ methods
   function [I, J ,V, W] = assemble_grad_xy_func(this, pnodes, pelems, ref, ref_gradx, ref_grady, weights, extern_x, extern_y)
      [I, J, V, W] =  Assembler_('assemex_gradfunc_xy',  this.id_, pnodes, pelems, ref, ref_gradx, ref_grady, weights, extern_x, extern_y);
   end
+
+  function [L] = assemble_massenergy(this, pnodes, pelems, ref, weights, extern_x, extern_y)
+    [L] = Assembler_('assemex_massenergy', this.id_, pnodes, pelems, ref, weights, extern_x, extern_y);
+  end
+
+  function [L] = assemble_stiffenergy(this, pnodes, pelems, ref_gradx, ref_grady, weights, extern_x, extern_y)
+    [L] = Assembler_('assemex_stiffenergy', this.id_, pnodes, pelems, ref_gradx, ref_grady, weights, extern_x, extern_y);
+  end
+
+  function [L] = assemble_massenergygrad(this, pnodes, pelems, ref, weights, extern_x, extern_y)
+    [L] = Assembler_('assemex_massenergygrad', this.id_, pnodes, pelems, ref, weights, extern_x, extern_y);
+  end
+
+  function [L] = assemble_stiffenergygrad(this, pnodes, pelems, ref_gradx, ref_grady, weights, extern_x, extern_y)
+    [L] = Assembler_('assemex_stiffenergygrad', this.id_, pnodes, pelems, ref_gradx, ref_grady, weights, extern_x, extern_y);
+  end 
   
+  function [L] = assemble_massgrad(this, pnodes, pelems, ref, weights, extern_x, extern_y)
+    [L] = Assembler_('assemex_massgrad', this.id_, pnodes, pelems, ref, weights, extern_x, extern_y);
+  end
+
+  function [L] = assemble_stiffgrad(this, pnodes, pelems, ref_gradx, ref_grady, weights, extern_x, extern_y)
+    [L] = Assembler_('assemex_stiffgrad', this.id_, pnodes, pelems, ref_gradx, ref_grady, weights, extern_x, extern_y);
+  end
+
+  function [L] = assemble_q2itrans(this, pnodes, pelems, ref, weights)
+    [L] = Assembler_('assemex_q2itrans', this.id_, pnodes, pelems, ref, weights);
+  end
+
+  function [L] = assemble_loadtrans(this, pnodes, pelems, ref, weights, extern)
+    [L] = Assembler_('assemex_loadtrans', this.id_, pnodes, pelems, ref, weights, extern);
+  end
+
+  function [L] = assemble_p2qtrans(this, pnodes, pelems, ref, extern)
+    [L] = Assembler_('assemex_p2qtrans', this.id_, pnodes, pelems, ref, extern);
+  end
+
+
   function [I, J ,V] = assemble_load_matrix(this, pnodes, pelems, ref, weights, extern)
      [I, J, V] =  Assembler_('assemex_lm',  this.id_, pnodes, pelems, ref, weights, extern);
   end

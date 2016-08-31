@@ -10,6 +10,8 @@ interp_energy = hobj.sigma * focus_mapping(Energy, hobj.fem.Promoted.elems, hobj
 
 Ref = sparse(I, J ,V);
 
+% display(size(Ref));display(size(hobj.rho))
+
 solution = hobj.DKernel\(Ref * hobj.rho);
 RHS = solution(ndofs);
 

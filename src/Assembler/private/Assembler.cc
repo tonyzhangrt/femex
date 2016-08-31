@@ -829,6 +829,95 @@ void Assembler::AssembleStiff(Real_t* &pI, Real_t* &pJ, Real_t*&pV,
 }
 
 
+void Assembler::AssembleGradLoad(Real_t* &pLoad, MatlabPtr Nodes, MatlabPtr Elems, 
+		MatlabPtr Ref, MatlabPtr RefX,MatlabPtr RefY,
+		MatlabPtr Weights, MatlabPtr Fcn_X, MatlabPtr Fcn_Y){
+
+	auto  pnodes_ptr           = mxGetPr(Nodes);
+	auto  pelem_ptr            = (int32_t*)mxGetPr(Elems);
+	auto  reference            = mxGetPr(Ref);
+	auto  referenceX           = mxGetPr(RefX);
+	auto  referenceY           = mxGetPr(RefY);
+	auto  weights              = mxGetPr(Weights);
+	auto  Interp_X             = mxGetPr(Fcn_X);
+	auto  Interp_Y             = mxGetPr(Fcn_Y);
+
+	auto numberofelem           = mxGetN(Elems);
+	auto numberofnodesperelem   = mxGetM(Elems);
+	auto numberofqnodes         = mxGetN(Ref);
+
+
+	mwSize vertex_1, vertex_2 , vertex_3;
+	Real_t det, area, tmp;
+	Real_t Jacobian[2][2];
+
+
+	// Fcn cannot be a function handle, too slow
+
+	/* @Revised: Fcn can be a function handle for one pass.
+	 * Which means extra space to store all the values. However,
+	 * we did not do it because Matlab can handle this easily.
+	 */
+	auto Fcn_X_ptr = Matlab_Cast<Real_t>(Fcn_X);
+	auto Fcn_Y_ptr = Matlab_Cast<Real_t>(Fcn_Y);
+	// linear interpolation
+	for (size_t i =0; i < numberofelem; i++){
+
+		vertex_1 = pelem_ptr[numberofnodesperelem*i] - 1;
+		vertex_2 = pelem_ptr[numberofnodesperelem*i + 1] - 1;
+		vertex_3 = pelem_ptr[numberofnodesperelem*i + 2] - 1;
+
+		Jacobian[0][0] = pnodes_ptr[2*vertex_3 + 1] - pnodes_ptr[2*vertex_1 + 1];
+		Jacobian[1][1] = pnodes_ptr[2*vertex_2    ] - pnodes_ptr[2*vertex_1    ];
+		Jacobian[0][1] = pnodes_ptr[2*vertex_1 + 1] - pnodes_ptr[2*vertex_2 + 1];
+		Jacobian[1][0] = pnodes_ptr[2*vertex_1    ] - pnodes_ptr[2*vertex_3    ];
+
+		det = Jacobian[0][0] * Jacobian[1][1] - Jacobian[0][1] * Jacobian[1][0];
+
+		area = 0.5*fabs(det);		
+
+		if (mxGetNumberOfElements(Fcn_X) == numberofelem*numberofqnodes &&
+			mxGetNumberOfElements(Fcn_Y) == numberofelem*numberofqnodes ){
+			// Fcn has numberofqnodes * numberofelem elements
+			for (size_t j = 0; j < numberofnodesperelem; j++) {
+				tmp = 0.;
+				for (size_t l = 0; l < numberofqnodes; l++) {
+					tmp += (Fcn_X_ptr[i*numberofqnodes + l]*
+				           		(Jacobian[0][0]*referenceX[j+ l*numberofnodesperelem] +
+				            	 Jacobian[0][1]*referenceY[j+ l*numberofnodesperelem])
+				           	+Fcn_Y_ptr[i*numberofqnodes + l]*
+				           		(Jacobian[1][0]*referenceX[j+ l*numberofnodesperelem] +
+				           	 	 Jacobian[1][1]*referenceY[j+ l*numberofnodesperelem])
+				           	)*weights[l];
+				}
+				pLoad[pelem_ptr[i*numberofnodesperelem + j] - 1] += tmp/2.0;
+			}
+		}
+		else if (mxGetNumberOfElements(Fcn_X) == 1 &&
+				 mxGetNumberOfElements(Fcn_Y) == 1 ) {
+			// Fcn is constant
+			for (size_t j = 0; j < numberofnodesperelem; j++) {
+				tmp = 0.;
+				for (size_t l = 0; l < numberofqnodes; l++) {
+					tmp += (*(Fcn_X_ptr)*
+				           		(Jacobian[0][0]*referenceX[j+ l*numberofnodesperelem] +
+				            	 Jacobian[0][1]*referenceY[j+ l*numberofnodesperelem])
+				           	+*(Fcn_Y_ptr)*
+				           		(Jacobian[1][0]*referenceX[j+ l*numberofnodesperelem] +
+				           	 	 Jacobian[1][1]*referenceY[j+ l*numberofnodesperelem])
+				           	)*weights[l];
+				}
+				pLoad[pelem_ptr[i*numberofnodesperelem + j] - 1] += tmp/2.0;
+			}
+		}
+		else {
+			// Other cases does not match
+			mexErrMsgTxt("Error:Assembler:AssembleGradLoad::Failed with unexpected Fcn.\n");
+		}// end iff
+	}//end for 
+}//end all
+
+
 void Assembler::AssembleGradXFunc(Real_t* &pI, Real_t* &pJ, Real_t* &pV,
 		MatlabPtr Nodes, MatlabPtr Elems, MatlabPtr Ref, MatlabPtr RefX, MatlabPtr RefY,
 		MatlabPtr Weights, MatlabPtr Fcn){
@@ -1148,6 +1237,8 @@ void Assembler::AssembleGradXYFunc(Real_t* &pI, Real_t* &pJ, Real_t* &pV,Real_t*
 	}
 }//end all
 
+
+
 // build matrix form of load vector.
 void Assembler::AssembleLoadMatrix(Real_t*& pI, Real_t*& pJ, Real_t*& pV, MatlabPtr Nodes,
 		MatlabPtr Elems,MatlabPtr Ref,
@@ -1206,6 +1297,518 @@ void Assembler::AssembleLoadMatrix(Real_t*& pI, Real_t*& pJ, Real_t*& pV, Matlab
 	}
 }
 
+void Assembler::AssembleMassEnergy(Real_t* &MassEnergy,
+		MatlabPtr Nodes, MatlabPtr Elems,MatlabPtr Ref,
+		MatlabPtr Weights, MatlabPtr QFcn, MatlabPtr PFcn){
+
+
+	auto  pnodes_ptr           = mxGetPr(Nodes);
+	auto  pelem_ptr            = (int32_t*)mxGetPr(Elems);
+	auto  reference            = mxGetPr(Ref);
+	auto  weights              = mxGetPr(Weights);
+	auto  Interp               = mxGetPr(QFcn);
+	auto  Pnodes               = mxGetPr(PFcn);
+
+	auto numberofelem           = mxGetN(Elems);
+	auto numberofnodesperelem   = mxGetM(Elems);
+	auto numberofqnodes         = mxGetN(Ref);
+	auto numberofpnodes         = mxGetN(Nodes);
+
+
+	mwSize vertex_1, vertex_2 , vertex_3, rInd, cInd, qInd;
+	Real_t det, area, tmp;
+
+
+	if (mxGetNumberOfElements(QFcn) == numberofelem*numberofqnodes &&
+		mxGetNumberOfElements(PFcn) == numberofpnodes){
+		*MassEnergy = 0.;
+		for (size_t i =0; i < numberofelem; i++){
+
+			vertex_1 = pelem_ptr[numberofnodesperelem*i] - 1;
+			vertex_2 = pelem_ptr[numberofnodesperelem*i + 1] - 1;
+			vertex_3 = pelem_ptr[numberofnodesperelem*i + 2] - 1;
+
+			det = (pnodes_ptr[vertex_2*2] - pnodes_ptr[vertex_1*2])*(pnodes_ptr[vertex_3*2 + 1] - pnodes_ptr[vertex_1*2 + 1]) -
+					(pnodes_ptr[vertex_2*2 + 1] - pnodes_ptr[vertex_1*2 + 1])*(pnodes_ptr[vertex_3*2] - pnodes_ptr[vertex_1*2]);
+			area = 0.5*fabs(det);
+
+			// Due to symmetric property, only need half of the work load.
+			tmp = 0.;
+			for (size_t j = 0; j < numberofnodesperelem; j++){
+				rInd = pelem_ptr[i*numberofnodesperelem + j] - 1;
+
+				for (size_t k = 0; k < numberofnodesperelem; k++){
+					cInd = pelem_ptr[i*numberofnodesperelem + k] - 1;
+
+					for (size_t l = 0; l < numberofqnodes; l++){
+						qInd = i*numberofqnodes + l;
+
+						tmp += 	Interp[qInd]*weights[l]*
+								Pnodes[rInd]*reference[j+ l*numberofnodesperelem]*
+								reference[k+ l*numberofnodesperelem]*Pnodes[cInd];								
+					}
+				}
+			}
+			*MassEnergy = *MassEnergy + tmp*area;
+		}
+	}else {
+		// Other cases does not match
+		mexErrMsgTxt("Error:Assembler:AssembleMassGrad::Failed with unexpected Fcn.\n");
+	}
+}
+
+void Assembler::AssembleStiffEnergy(Real_t* &StiffEnergy,
+		MatlabPtr Nodes, MatlabPtr Elems, MatlabPtr RefX,
+		MatlabPtr RefY, MatlabPtr Weights, MatlabPtr QFcn, MatlabPtr PFcn) {
+
+
+	auto  pnodes_ptr           = mxGetPr(Nodes);
+	auto  pelem_ptr            = (int32_t*)mxGetPr(Elems);
+	auto  referenceX           = mxGetPr(RefX);
+	auto  referenceY           = mxGetPr(RefY);
+	auto  weights              = mxGetPr(Weights);
+	auto  Interp               = mxGetPr(QFcn);
+	auto  Pnodes               = mxGetPr(PFcn);
+
+	auto numberofelem           = mxGetN(Elems);
+	auto numberofnodesperelem   = mxGetM(Elems);
+	auto numberofqnodes         = mxGetN(RefX);
+	auto numberofpnodes         = mxGetN(Nodes);
+
+	mwSize vertex_1, vertex_2, vertex_3, rInd, cInd, qInd;
+	Real_t det, area, tmp;
+	Real_t Jacobian[2][2];
+
+	if (mxGetNumberOfElements(QFcn) == numberofelem*numberofqnodes &&
+		mxGetNumberOfElements(PFcn) == numberofpnodes) {
+		// Fcn is a matrix
+		*StiffEnergy = 0.;
+		for (size_t i =0; i < numberofelem; i++){
+
+			vertex_1 = pelem_ptr[numberofnodesperelem*i] - 1;
+			vertex_2 = pelem_ptr[numberofnodesperelem*i + 1] - 1;
+			vertex_3 = pelem_ptr[numberofnodesperelem*i + 2] - 1;
+
+			Jacobian[0][0] = pnodes_ptr[2*vertex_3 + 1] - pnodes_ptr[2*vertex_1 + 1];
+			Jacobian[1][1] = pnodes_ptr[2*vertex_2    ] - pnodes_ptr[2*vertex_1    ];
+			Jacobian[0][1] = pnodes_ptr[2*vertex_1 + 1] - pnodes_ptr[2*vertex_2 + 1];
+			Jacobian[1][0] = pnodes_ptr[2*vertex_1    ] - pnodes_ptr[2*vertex_3    ];
+
+			// Orientation corrected.
+			det = Jacobian[0][0] * Jacobian[1][1] - Jacobian[0][1] * Jacobian[1][0];
+			area = 0.5*fabs(det);
+
+			// Due to symmetric property, half of work load can be reduced
+			tmp = 0.;
+			for (size_t j = 0; j < numberofnodesperelem; j++){
+				rInd = pelem_ptr[i*numberofnodesperelem + j] - 1;
+
+				for (size_t k = 0; k < numberofnodesperelem; k++){
+					cInd = pelem_ptr[i*numberofnodesperelem + k] - 1;
+
+					for (size_t l = 0; l < numberofqnodes; l++){
+						qInd = i*numberofqnodes + l;
+
+						tmp += 	Interp[qInd]*weights[l]*
+								Pnodes[rInd]* (
+								(Jacobian[0][0]*referenceX[j+ l*numberofnodesperelem] + Jacobian[0][1]*referenceY[j+ l*numberofnodesperelem])*
+								(Jacobian[0][0]*referenceX[k+ l*numberofnodesperelem] + Jacobian[0][1]*referenceY[k+ l*numberofnodesperelem])
+								+
+								(Jacobian[1][0]*referenceX[j+ l*numberofnodesperelem] + Jacobian[1][1]*referenceY[j+ l*numberofnodesperelem])*
+								(Jacobian[1][0]*referenceX[k+ l*numberofnodesperelem] + Jacobian[1][1]*referenceY[k+ l*numberofnodesperelem])
+								)*Pnodes[cInd];
+					}
+				}
+			}
+			*StiffEnergy = *StiffEnergy + tmp/4.0/area;
+
+		}
+	}else {
+		// Other cases does not match
+		mexErrMsgTxt("Error:Assembler:AssembleMassGrad::Failed with unexpected Fcn.\n");	
+	}
+}
+
+void Assembler::AssembleMassEnergyGrad(Real_t* &MassEnergyGrad,
+		MatlabPtr Nodes, MatlabPtr Elems,MatlabPtr Ref,
+		MatlabPtr Weights, MatlabPtr QFcn, MatlabPtr PFcn){
+
+
+	auto  pnodes_ptr           = mxGetPr(Nodes);
+	auto  pelem_ptr            = (int32_t*)mxGetPr(Elems);
+	auto  reference            = mxGetPr(Ref);
+	auto  weights              = mxGetPr(Weights);
+	auto  Interp               = mxGetPr(QFcn);
+	auto  Pnodes               = mxGetPr(PFcn);
+
+	auto numberofelem           = mxGetN(Elems);
+	auto numberofnodesperelem   = mxGetM(Elems);
+	auto numberofqnodes         = mxGetN(Ref);
+	auto numberofpnodes         = mxGetN(Nodes);
+
+
+	mwSize vertex_1, vertex_2 , vertex_3, rInd, cInd, qInd;
+	Real_t det, area, tmp;
+
+
+	if (mxGetNumberOfElements(QFcn) == numberofelem*numberofqnodes &&
+		mxGetNumberOfElements(PFcn) == numberofpnodes){
+		for (size_t i =0; i < numberofelem; i++){
+
+			vertex_1 = pelem_ptr[numberofnodesperelem*i] - 1;
+			vertex_2 = pelem_ptr[numberofnodesperelem*i + 1] - 1;
+			vertex_3 = pelem_ptr[numberofnodesperelem*i + 2] - 1;
+
+			det = (pnodes_ptr[vertex_2*2] - pnodes_ptr[vertex_1*2])*(pnodes_ptr[vertex_3*2 + 1] - pnodes_ptr[vertex_1*2 + 1]) -
+					(pnodes_ptr[vertex_2*2 + 1] - pnodes_ptr[vertex_1*2 + 1])*(pnodes_ptr[vertex_3*2] - pnodes_ptr[vertex_1*2]);
+			area = 0.5*fabs(det);
+
+			// Due to symmetric property, only need half of the work load.
+			for (size_t j = 0; j < numberofnodesperelem; j++){
+				rInd = pelem_ptr[i*numberofnodesperelem + j] - 1;
+
+				tmp = 0.;
+				for (size_t k = 0; k < numberofnodesperelem; k++){
+					cInd = pelem_ptr[i*numberofnodesperelem + k] - 1;
+
+					for (size_t l = 0; l < numberofqnodes; l++){
+						qInd = i*numberofqnodes + l;
+
+						tmp += 	Interp[qInd]*weights[l]*
+								reference[j+ l*numberofnodesperelem]*
+								reference[k+ l*numberofnodesperelem]*Pnodes[cInd];								
+					}
+				}
+				MassEnergyGrad[rInd] +=  tmp*area;
+			}			
+		}
+	}else {
+		// Other cases does not match
+		mexErrMsgTxt("Error:Assembler:AssembleMassGrad::Failed with unexpected Fcn.\n");
+	}
+}
+
+void Assembler::AssembleStiffEnergyGrad(Real_t* &StiffEnergyGrad,
+		MatlabPtr Nodes, MatlabPtr Elems, MatlabPtr RefX,
+		MatlabPtr RefY, MatlabPtr Weights, MatlabPtr QFcn, MatlabPtr PFcn) {
+
+
+	auto  pnodes_ptr           = mxGetPr(Nodes);
+	auto  pelem_ptr            = (int32_t*)mxGetPr(Elems);
+	auto  referenceX           = mxGetPr(RefX);
+	auto  referenceY           = mxGetPr(RefY);
+	auto  weights              = mxGetPr(Weights);
+	auto  Interp               = mxGetPr(QFcn);
+	auto  Pnodes               = mxGetPr(PFcn);
+
+	auto numberofelem           = mxGetN(Elems);
+	auto numberofnodesperelem   = mxGetM(Elems);
+	auto numberofqnodes         = mxGetN(RefX);
+	auto numberofpnodes         = mxGetN(Nodes);
+
+	mwSize vertex_1, vertex_2, vertex_3, rInd, cInd, qInd;
+	Real_t det, area, tmp;
+	Real_t Jacobian[2][2];
+
+	if (mxGetNumberOfElements(QFcn) == numberofelem*numberofqnodes &&
+		mxGetNumberOfElements(PFcn) == numberofpnodes) {
+		// Fcn is a matrix
+		for (size_t i =0; i < numberofelem; i++){
+
+			vertex_1 = pelem_ptr[numberofnodesperelem*i] - 1;
+			vertex_2 = pelem_ptr[numberofnodesperelem*i + 1] - 1;
+			vertex_3 = pelem_ptr[numberofnodesperelem*i + 2] - 1;
+
+			Jacobian[0][0] = pnodes_ptr[2*vertex_3 + 1] - pnodes_ptr[2*vertex_1 + 1];
+			Jacobian[1][1] = pnodes_ptr[2*vertex_2    ] - pnodes_ptr[2*vertex_1    ];
+			Jacobian[0][1] = pnodes_ptr[2*vertex_1 + 1] - pnodes_ptr[2*vertex_2 + 1];
+			Jacobian[1][0] = pnodes_ptr[2*vertex_1    ] - pnodes_ptr[2*vertex_3    ];
+
+			// Orientation corrected.
+			det = Jacobian[0][0] * Jacobian[1][1] - Jacobian[0][1] * Jacobian[1][0];
+			area = 0.5*fabs(det);
+
+			// Due to symmetric property, half of work load can be reduced
+			for (size_t j = 0; j < numberofnodesperelem; j++){
+				rInd = pelem_ptr[i*numberofnodesperelem + j] - 1;
+
+				tmp = 0.;
+				for (size_t k = 0; k < numberofnodesperelem; k++){
+					cInd = pelem_ptr[i*numberofnodesperelem + k] - 1;
+
+					for (size_t l = 0; l < numberofqnodes; l++){
+						qInd = i*numberofqnodes + l;
+
+						tmp += 	Interp[qInd]*weights[l]*(
+								(Jacobian[0][0]*referenceX[j+ l*numberofnodesperelem] + Jacobian[0][1]*referenceY[j+ l*numberofnodesperelem])*
+								(Jacobian[0][0]*referenceX[k+ l*numberofnodesperelem] + Jacobian[0][1]*referenceY[k+ l*numberofnodesperelem])
+								+
+								(Jacobian[1][0]*referenceX[j+ l*numberofnodesperelem] + Jacobian[1][1]*referenceY[j+ l*numberofnodesperelem])*
+								(Jacobian[1][0]*referenceX[k+ l*numberofnodesperelem] + Jacobian[1][1]*referenceY[k+ l*numberofnodesperelem])
+								)*Pnodes[cInd];
+					}
+				}
+				StiffEnergyGrad[rInd] += tmp/4.0/area;
+			}
+			
+
+		}
+	}else {
+		// Other cases does not match
+		mexErrMsgTxt("Error:Assembler:AssembleMassGrad::Failed with unexpected Fcn.\n");	
+	}
+}
+
+void Assembler::AssembleMassGrad(Real_t* &MassGrad,
+		MatlabPtr Nodes, MatlabPtr Elems,MatlabPtr Ref,
+		MatlabPtr Weights, MatlabPtr rPFcn, MatlabPtr cPFcn){
+
+
+	auto  pnodes_ptr           = mxGetPr(Nodes);
+	auto  pelem_ptr            = (int32_t*)mxGetPr(Elems);
+	auto  reference            = mxGetPr(Ref);
+	auto  weights              = mxGetPr(Weights);
+	auto  rPnodes              = mxGetPr(rPFcn);
+ 	auto  cPnodes              = mxGetPr(cPFcn);
+
+	auto numberofelem           = mxGetN(Elems);
+	auto numberofnodesperelem   = mxGetM(Elems);
+	auto numberofqnodes         = mxGetN(Ref);
+	auto numberofpnodes         = mxGetN(Nodes);
+
+
+	mwSize vertex_1, vertex_2 , vertex_3, rInd, cInd, qInd;
+	Real_t det, area, tmp;
+
+
+	if (mxGetNumberOfElements(rPFcn) == numberofpnodes &&
+		mxGetNumberOfElements(cPFcn) == numberofpnodes){
+		for (size_t i =0; i < numberofelem; i++){
+
+			vertex_1 = pelem_ptr[numberofnodesperelem*i] - 1;
+			vertex_2 = pelem_ptr[numberofnodesperelem*i + 1] - 1;
+			vertex_3 = pelem_ptr[numberofnodesperelem*i + 2] - 1;
+
+			det = (pnodes_ptr[vertex_2*2] - pnodes_ptr[vertex_1*2])*(pnodes_ptr[vertex_3*2 + 1] - pnodes_ptr[vertex_1*2 + 1]) -
+					(pnodes_ptr[vertex_2*2 + 1] - pnodes_ptr[vertex_1*2 + 1])*(pnodes_ptr[vertex_3*2] - pnodes_ptr[vertex_1*2]);
+			area = 0.5*fabs(det);
+
+			for (size_t l = 0; l < numberofqnodes; l++){
+				tmp = 0.;
+				qInd = i*numberofqnodes + l;
+
+				for (size_t j = 0; j < numberofnodesperelem; j++){
+					for (size_t k = 0; k < numberofnodesperelem; k++){
+						rInd = pelem_ptr[i*numberofnodesperelem + j]-1;
+						cInd = pelem_ptr[i*numberofnodesperelem + k]-1;
+						
+						tmp += 	rPnodes[rInd]*reference[j+ l*numberofnodesperelem]*
+								reference[k+ l*numberofnodesperelem]*cPnodes[cInd];
+								
+					}
+				}
+				MassGrad[qInd] = tmp * weights[l] * area;
+			}
+		}
+	}else {
+		// Other cases does not match
+		mexErrMsgTxt("Error:Assembler:AssembleMassGrad::Failed with unexpected Fcn.\n");
+	}
+}
+
+void Assembler::AssembleStiffGrad(Real_t* &StiffGrad,
+		MatlabPtr Nodes, MatlabPtr Elems, MatlabPtr RefX, MatlabPtr RefY,
+		MatlabPtr Weights, MatlabPtr rPFcn, MatlabPtr cPFcn) {
+
+
+	auto  pnodes_ptr           = mxGetPr(Nodes);
+	auto  pelem_ptr            = (int32_t*)mxGetPr(Elems);
+	auto  referenceX           = mxGetPr(RefX);
+	auto  referenceY           = mxGetPr(RefY);
+	auto  weights              = mxGetPr(Weights);
+	auto  rPnodes              = mxGetPr(rPFcn);
+ 	auto  cPnodes              = mxGetPr(cPFcn);
+
+	auto numberofelem           = mxGetN(Elems);
+	auto numberofnodesperelem   = mxGetM(Elems);
+	auto numberofqnodes         = mxGetN(RefX);
+	auto numberofpnodes         = mxGetN(Nodes);
+
+	mwSize vertex_1, vertex_2, vertex_3, rInd, cInd, qInd;
+	Real_t det, area, tmp;
+	Real_t Jacobian[2][2];
+
+	if (mxGetNumberOfElements(rPFcn) == numberofpnodes &&
+		mxGetNumberOfElements(cPFcn) == numberofpnodes) {
+		for (size_t i =0; i < numberofelem; i++){
+
+			vertex_1 = pelem_ptr[numberofnodesperelem*i] - 1;
+			vertex_2 = pelem_ptr[numberofnodesperelem*i + 1] - 1;
+			vertex_3 = pelem_ptr[numberofnodesperelem*i + 2] - 1;
+
+			Jacobian[0][0] = pnodes_ptr[2*vertex_3 + 1] - pnodes_ptr[2*vertex_1 + 1];
+			Jacobian[1][1] = pnodes_ptr[2*vertex_2    ] - pnodes_ptr[2*vertex_1    ];
+			Jacobian[0][1] = pnodes_ptr[2*vertex_1 + 1] - pnodes_ptr[2*vertex_2 + 1];
+			Jacobian[1][0] = pnodes_ptr[2*vertex_1    ] - pnodes_ptr[2*vertex_3    ];
+
+			// Orientation corrected.
+			det = Jacobian[0][0] * Jacobian[1][1] - Jacobian[0][1] * Jacobian[1][0];
+			area = 0.5*fabs(det);
+
+			// Due to symmetric property, half of work load can be reduced
+			for (size_t l = 0; l < numberofqnodes; l++){
+				tmp = 0;
+				qInd = i*numberofqnodes + l;
+
+				for (size_t j = 0; j < numberofnodesperelem; j++){
+					for (size_t k = 0; k < j + 1; k++){
+						rInd = pelem_ptr[i*numberofnodesperelem + j]-1;
+						cInd = pelem_ptr[i*numberofnodesperelem + k]-1; 						
+							 
+						tmp = tmp + rPnodes[rInd] *(
+								(Jacobian[0][0]*referenceX[j+ l*numberofnodesperelem] + Jacobian[0][1]*referenceY[j+ l*numberofnodesperelem])*
+								(Jacobian[0][0]*referenceX[k+ l*numberofnodesperelem] + Jacobian[0][1]*referenceY[k+ l*numberofnodesperelem])
+								+
+								(Jacobian[1][0]*referenceX[j+ l*numberofnodesperelem] + Jacobian[1][1]*referenceY[j+ l*numberofnodesperelem])*
+								(Jacobian[1][0]*referenceX[k+ l*numberofnodesperelem] + Jacobian[1][1]*referenceY[k+ l*numberofnodesperelem])
+								)*cPnodes[cInd];
+					
+					}
+				}
+				StiffGrad[qInd] = tmp * weights[l] /4.0 / area;
+			}
+		}
+	}else{
+		// Other cases does not match
+		mexErrMsgTxt("Error:Assembler:AssembleMassGrad::Failed with unexpected Fcn.\n");
+	}
+}
+
+void Assembler::AssembleQ2IntTrans(Real_t* &qWeights,
+		MatlabPtr Nodes, MatlabPtr Elems,MatlabPtr Ref,
+		MatlabPtr Weights){
+
+
+	auto  pnodes_ptr           = mxGetPr(Nodes);
+	auto  pelem_ptr            = (int32_t*)mxGetPr(Elems);
+	auto  reference            = mxGetPr(Ref);
+	auto  weights              = mxGetPr(Weights);
+
+	auto numberofelem           = mxGetN(Elems);
+	auto numberofnodesperelem   = mxGetM(Elems);
+	auto numberofqnodes         = mxGetN(Ref);
+	auto numberofpnodes         = mxGetN(Nodes);
+
+
+	mwSize vertex_1, vertex_2 , vertex_3;
+	Real_t det, area;
+
+
+	for (size_t i =0; i < numberofelem; i++){
+
+		vertex_1 = pelem_ptr[numberofnodesperelem*i] - 1;
+		vertex_2 = pelem_ptr[numberofnodesperelem*i + 1] - 1;
+		vertex_3 = pelem_ptr[numberofnodesperelem*i + 2] - 1;
+
+		det = (pnodes_ptr[vertex_2*2] - pnodes_ptr[vertex_1*2])*(pnodes_ptr[vertex_3*2 + 1] - pnodes_ptr[vertex_1*2 + 1]) -
+				(pnodes_ptr[vertex_2*2 + 1] - pnodes_ptr[vertex_1*2 + 1])*(pnodes_ptr[vertex_3*2] - pnodes_ptr[vertex_1*2]);
+		area = 0.5*fabs(det);
+
+		for (size_t l = 0; l < numberofqnodes; l++){
+			qWeights[i*numberofqnodes + l] += weights[l]*area;								
+		}
+	}
+
+}
+
+void Assembler::AssembleLoadTrans(Real_t* &qLoad,
+		MatlabPtr Nodes, MatlabPtr Elems,MatlabPtr Ref,
+		MatlabPtr Weights, MatlabPtr PFcn){
+
+
+	auto  pnodes_ptr           = mxGetPr(Nodes);
+	auto  pelem_ptr            = (int32_t*)mxGetPr(Elems);
+	auto  reference            = mxGetPr(Ref);
+	auto  weights              = mxGetPr(Weights);
+	auto  Pnodes              = mxGetPr(PFcn);
+
+	auto numberofelem           = mxGetN(Elems);
+	auto numberofnodesperelem   = mxGetM(Elems);
+	auto numberofqnodes         = mxGetN(Ref);
+	auto numberofpnodes         = mxGetN(Nodes);
+
+
+	mwSize vertex_1, vertex_2 , vertex_3, pInd, qInd;
+	Real_t det, area, tmp;
+
+
+	if (mxGetNumberOfElements(PFcn) == numberofpnodes){
+		for (size_t i =0; i < numberofelem; i++){
+
+			vertex_1 = pelem_ptr[numberofnodesperelem*i] - 1;
+			vertex_2 = pelem_ptr[numberofnodesperelem*i + 1] - 1;
+			vertex_3 = pelem_ptr[numberofnodesperelem*i + 2] - 1;
+
+			det = (pnodes_ptr[vertex_2*2] - pnodes_ptr[vertex_1*2])*(pnodes_ptr[vertex_3*2 + 1] - pnodes_ptr[vertex_1*2 + 1]) -
+					(pnodes_ptr[vertex_2*2 + 1] - pnodes_ptr[vertex_1*2 + 1])*(pnodes_ptr[vertex_3*2] - pnodes_ptr[vertex_1*2]);
+			area = 0.5*fabs(det);
+
+			// Due to symmetric property, only need half of the work load.
+			for (size_t l = 0; l < numberofqnodes; l++) {
+				tmp = 0.;
+				qInd = i*numberofqnodes + l;
+
+				for (size_t j = 0; j < numberofnodesperelem; j++) {
+					pInd = 	pelem_ptr[i*numberofnodesperelem + j] - 1;
+					tmp +=  Pnodes[pInd]*reference[j+ l*numberofnodesperelem];
+
+				}
+				qLoad[qInd] = tmp*area*weights[l];
+			}
+
+		}
+	}else {
+		// Other cases does not match
+		mexErrMsgTxt("Error:Assembler:AssembleLoadTrans::Failed with unexpected Fcn.\n");
+	}
+}
+
+void Assembler::AssembleP2QTrans(Real_t* &PFcn,
+		MatlabPtr Nodes, MatlabPtr Elems,MatlabPtr Ref,
+		MatlabPtr QFcn){
+
+
+	auto  pnodes_ptr           = mxGetPr(Nodes);
+	auto  pelem_ptr            = (int32_t*)mxGetPr(Elems);
+	auto  reference            = mxGetPr(Ref);
+	auto  Qnodes              = mxGetPr(QFcn);
+
+	auto numberofelem           = mxGetN(Elems);
+	auto numberofnodesperelem   = mxGetM(Elems);
+	auto numberofqnodes         = mxGetN(Ref);
+	auto numberofpnodes         = mxGetN(Nodes);
+
+	mwSize pInd, qInd;
+	Real_t tmp;
+
+
+	if (mxGetNumberOfElements(QFcn) == numberofqnodes * numberofelem){
+		for (size_t i =0; i < numberofelem; i++){
+
+			for (size_t j = 0; j < numberofnodesperelem; j++) {
+				tmp = 0.;
+				for (size_t l = 0; l < numberofqnodes; l++) {
+					tmp +=  Qnodes[i*numberofqnodes + l]*reference[j+ l*numberofnodesperelem];
+				}
+				PFcn[pelem_ptr[i*numberofnodesperelem + j] - 1] += tmp;
+			}
+
+		}
+	}else {
+		// Other cases does not match
+		mexErrMsgTxt("Error:Assembler:AssembleP2QTrans::Failed with unexpected Fcn.\n");
+	}
+}
 
 
 template class mexplus::Session<Assembler>;
@@ -1427,6 +2030,22 @@ MEX_DEFINE(assemlbc) (int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]
 
 }
 
+MEX_DEFINE(assemgradl) (int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
+	InputArguments input(nrhs, prhs, 9);
+	OutputArguments output(nlhs, plhs, 1);
+	Assembler* assembler = Session<Assembler>::get(input.get(0));
+
+	size_t numberofnodes   = mxGetN(prhs[1]);
+
+	plhs[0] = mxCreateNumericMatrix(numberofnodes,1,  mxDOUBLE_CLASS, mxREAL);
+	Real_t* pLoad = mxGetPr(plhs[0]);
+	
+	assembler->AssembleGradLoad(pLoad, CAST(prhs[1]),
+			CAST(prhs[2]), CAST(prhs[3]),
+			CAST(prhs[4]), CAST(prhs[5]),
+			CAST(prhs[6]), CAST(prhs[7]), CAST(prhs[8]));
+}
+
 MEX_DEFINE(assemex_gradfunc_x) (int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]){
 	InputArguments input(nrhs, prhs, 8);
 	OutputArguments output(nlhs, plhs, 3);
@@ -1504,6 +2123,169 @@ MEX_DEFINE(assemex_gradfunc_xy)  (int nlhs, mxArray* plhs[], int nrhs, const mxA
 			CAST(prhs[4]), CAST(prhs[5]),
 			CAST(prhs[6]), CAST(prhs[7]),CAST(prhs[8]));
 }
+
+MEX_DEFINE(assemex_massenergy) (int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
+	InputArguments input(nrhs, prhs, 7);
+	OutputArguments output(nlhs, plhs, 1);
+	Assembler* assembler = Session<Assembler>::get(input.get(0));
+
+	size_t numberofnodesperelem = mxGetM(prhs[2]);
+	size_t numberofelem         = mxGetN(prhs[2]);
+	size_t numberofqnodes       = mxGetM(prhs[3]);
+
+	plhs[0] = mxCreateNumericMatrix( 1 , 1 ,  mxDOUBLE_CLASS, mxREAL);
+	Real_t* MassEnergy = mxGetPr(plhs[0]);
+	assembler->AssembleMassEnergy(MassEnergy, CAST(prhs[1]),
+			CAST(prhs[2]), CAST(prhs[3]),
+			CAST(prhs[4]), CAST(prhs[5]),
+			CAST(prhs[6]));
+
+}
+
+MEX_DEFINE(assemex_stiffenergy) (int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
+	InputArguments input(nrhs, prhs, 8);
+	OutputArguments output(nlhs, plhs, 1);
+	Assembler* assembler = Session<Assembler>::get(input.get(0));
+
+	size_t numberofnodesperelem = mxGetM(prhs[2]);
+	size_t numberofelem         = mxGetN(prhs[2]);
+	size_t numberofqnodes       = mxGetM(prhs[3]);
+
+	plhs[0] = mxCreateNumericMatrix( 1 , 1 ,  mxDOUBLE_CLASS, mxREAL);
+	Real_t* StiffEnergy = mxGetPr(plhs[0]);
+	assembler->AssembleStiffEnergy(StiffEnergy, CAST(prhs[1]),
+			CAST(prhs[2]), CAST(prhs[3]),
+			CAST(prhs[4]), CAST(prhs[5]),
+			CAST(prhs[6]), CAST(prhs[7]));
+
+}
+
+MEX_DEFINE(assemex_massenergygrad) (int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
+	InputArguments input(nrhs, prhs, 7);
+	OutputArguments output(nlhs, plhs, 1);
+	Assembler* assembler = Session<Assembler>::get(input.get(0));
+
+	size_t numberofnodes   		= mxGetN(prhs[1]);
+	size_t numberofnodesperelem = mxGetM(prhs[2]);
+	size_t numberofelem         = mxGetN(prhs[2]);
+	size_t numberofqnodes       = mxGetM(prhs[3]);
+
+	plhs[0] = mxCreateNumericMatrix( numberofnodes , 1 ,  mxDOUBLE_CLASS, mxREAL);
+	Real_t* MassEnergyGrad = mxGetPr(plhs[0]);
+	assembler->AssembleMassEnergyGrad(MassEnergyGrad, CAST(prhs[1]),
+			CAST(prhs[2]), CAST(prhs[3]),
+			CAST(prhs[4]), CAST(prhs[5]),
+			CAST(prhs[6]));
+
+}
+
+MEX_DEFINE(assemex_stiffenergygrad) (int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
+	InputArguments input(nrhs, prhs, 8);
+	OutputArguments output(nlhs, plhs, 1);
+	Assembler* assembler = Session<Assembler>::get(input.get(0));
+
+	size_t numberofnodes   		= mxGetN(prhs[1]);
+	size_t numberofnodesperelem = mxGetM(prhs[2]);
+	size_t numberofelem         = mxGetN(prhs[2]);
+	size_t numberofqnodes       = mxGetM(prhs[3]);
+
+	plhs[0] = mxCreateNumericMatrix( numberofnodes , 1 ,  mxDOUBLE_CLASS, mxREAL);
+	Real_t* StiffEnergyGrad = mxGetPr(plhs[0]);
+	assembler->AssembleStiffEnergyGrad(StiffEnergyGrad, CAST(prhs[1]),
+			CAST(prhs[2]), CAST(prhs[3]),
+			CAST(prhs[4]), CAST(prhs[5]),
+			CAST(prhs[6]), CAST(prhs[7]));
+
+}
+
+MEX_DEFINE(assemex_massgrad) (int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
+	InputArguments input(nrhs, prhs, 7);
+	OutputArguments output(nlhs, plhs, 1);
+	Assembler* assembler = Session<Assembler>::get(input.get(0));
+
+	size_t numberofnodesperelem = mxGetM(prhs[2]);
+	size_t numberofelem         = mxGetN(prhs[2]);
+	size_t numberofqnodes       = mxGetM(prhs[3]);
+
+	plhs[0] = mxCreateNumericMatrix( 1 , numberofqnodes * numberofelem ,  mxDOUBLE_CLASS, mxREAL);
+	Real_t* MassGrad = mxGetPr(plhs[0]);
+	assembler->AssembleMassGrad(MassGrad, CAST(prhs[1]),
+			CAST(prhs[2]), CAST(prhs[3]),
+			CAST(prhs[4]), CAST(prhs[5]),
+			CAST(prhs[6]));
+
+}
+
+MEX_DEFINE(assemex_stiffgrad) (int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
+	InputArguments input(nrhs, prhs, 8);
+	OutputArguments output(nlhs, plhs, 1);
+	Assembler* assembler = Session<Assembler>::get(input.get(0));
+
+	size_t numberofnodesperelem = mxGetM(prhs[2]);
+	size_t numberofelem         = mxGetN(prhs[2]);
+	size_t numberofqnodes       = mxGetM(prhs[3]);
+
+	plhs[0] = mxCreateNumericMatrix( 1 , numberofqnodes * numberofelem ,  mxDOUBLE_CLASS, mxREAL);
+	Real_t* StiffGrad = mxGetPr(plhs[0]);
+	assembler->AssembleStiffGrad(StiffGrad, CAST(prhs[1]),
+			CAST(prhs[2]), CAST(prhs[3]),
+			CAST(prhs[4]), CAST(prhs[5]),
+			CAST(prhs[6]), CAST(prhs[7]));
+
+}
+
+MEX_DEFINE(assemex_q2itrans) (int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
+	InputArguments input(nrhs, prhs, 5);
+	OutputArguments output(nlhs, plhs, 1);
+	Assembler* assembler = Session<Assembler>::get(input.get(0));
+
+	size_t numberofnodesperelem = mxGetM(prhs[2]);
+	size_t numberofelem         = mxGetN(prhs[2]);
+	size_t numberofqnodes       = mxGetM(prhs[3]);
+
+	plhs[0] = mxCreateNumericMatrix( 1 , numberofqnodes * numberofelem ,  mxDOUBLE_CLASS, mxREAL);
+	Real_t* qWeights = mxGetPr(plhs[0]);
+	assembler->AssembleQ2IntTrans(qWeights, CAST(prhs[1]),
+			CAST(prhs[2]), CAST(prhs[3]),
+			CAST(prhs[4]));
+
+}
+
+MEX_DEFINE(assemex_loadtrans) (int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
+	InputArguments input(nrhs, prhs, 6);
+	OutputArguments output(nlhs, plhs, 1);
+	Assembler* assembler = Session<Assembler>::get(input.get(0));
+
+	size_t numberofnodesperelem = mxGetM(prhs[2]);
+	size_t numberofelem         = mxGetN(prhs[2]);
+	size_t numberofqnodes       = mxGetM(prhs[3]);
+
+	plhs[0] = mxCreateNumericMatrix( 1 , numberofqnodes * numberofelem ,  mxDOUBLE_CLASS, mxREAL);
+	Real_t* qLoad = mxGetPr(plhs[0]);
+	assembler->AssembleLoadTrans(qLoad, CAST(prhs[1]),
+			CAST(prhs[2]), CAST(prhs[3]),
+			CAST(prhs[4]), CAST(prhs[5]));
+
+}
+
+MEX_DEFINE(assemex_p2qtrans) (int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
+	InputArguments input(nrhs, prhs, 5);
+	OutputArguments output(nlhs, plhs, 1);
+	Assembler* assembler = Session<Assembler>::get(input.get(0));
+
+	size_t numberofnodes        = mxGetN(prhs[1]);
+	// size_t numberofnodesperelem = mxGetM(prhs[2]);
+	// size_t numberofelem         = mxGetN(prhs[2]);
+	// size_t numberofqnodes       = mxGetM(prhs[3]);
+
+	plhs[0] = mxCreateNumericMatrix( numberofnodes , 1 ,  mxDOUBLE_CLASS, mxREAL);
+	Real_t* PFcn = mxGetPr(plhs[0]);
+	assembler->AssembleP2QTrans(PFcn, CAST(prhs[1]),
+			CAST(prhs[2]), CAST(prhs[3]),
+			CAST(prhs[4]));
+
+}
+
 
 MEX_DEFINE(assemex_lm) (int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	InputArguments input(nrhs, prhs, 6);

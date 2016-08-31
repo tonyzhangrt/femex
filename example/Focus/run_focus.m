@@ -1,4 +1,4 @@
-function run_focus()
+% function run_focus()
 
 [h, t] = focus_init(1, 1/5000, 0.2, 50);
 
@@ -47,5 +47,5 @@ fprintf('Error with target is %6.8f.\n',norm(x - u) );
 % disp(norm(res - h.rho));
 
 
-end
+% end
 
