@@ -17,10 +17,10 @@ z0 = zeros(length, 1);
 % [T, Y, ~]=dopri5Mex(@rigid,[0, 0.5, 1.5],[u0; v0; w0; z0],opt);
 % [T, Y, ~]=dop853Mex(@rigid,[0, 0.5, 1.5],[u0; v0; w0; z0],opt);
 
-options = odeset('RelTol', 1e-6, 'AbsTol', 1e-8, 'NormControl', 'on');
+options = odeset('RelTol', 1e-8, 'AbsTol', 1e-8, 'NormControl', 'on');
 
 % [T, Y] = ode45(@rigid, [0, 0.5, 1], [u0;v0;w0;z0], options); 
-[T, Y] = ode113(@rigid, 0:0.5:1.0, [u0;v0;w0;z0], options); 
+[T, Y] = ode113(@rigid, 0:0.005:1.5, [u0;v0;w0;z0], options); 
 
 
     function dy = rigid(t, y)
@@ -44,14 +44,21 @@ options = odeset('RelTol', 1e-6, 'AbsTol', 1e-8, 'NormControl', 'on');
 
 
     
+% todo: use pre-allocated array to hold u, v, w, z, tmp instead of doing so
+% for each round. Have to compare the timig.
+
+% update: almost 90% time is consumed at the function below, the mldivide
+% function. it is kind of impossible to avoid such a huge amount of time of
+% computing, since it is already parallelized. 
+
 
     function [u, v, w ,z] = f(t, U, V, W, Z) 
         
         u = V;
-        v = -((hobj.Sm + hobj.Mxy)*U - (hobj.Mx + hobj.My)*V + ...
-            hobj.P*W + hobj.Q*Z + g(t));
-        w = -((hobj.Mx)*W + hobj.Px*U);
-        z = -((hobj.My)*Z + hobj.Qy*U);
+        v = -(hobj.Sm + hobj.Mxy)*U - (hobj.Mx + hobj.My)*V + ...
+            hobj.P*W + hobj.Q*Z + g(t);
+        w = -(hobj.Mx)*W + hobj.Px*U;
+        z = -(hobj.My)*Z + hobj.Qy*U;
         % this step consumes most of the time.
         % it already optimized, the time is almost like one mldivide
         % instead of 3.

@@ -1,7 +1,7 @@
 function hobj = pml_init(prec, min_area)
 
-addpath(genpath('~/Documents/github/femex'));
-L = 0.1;
+%addpath(genpath('../../'));
+L = 0.5;
 sigma0 = 80;
 
 hobj.fem = FEM([-0.5, -.5, .5, -.5, .5, .5, -.5, .5]', ...
@@ -22,6 +22,12 @@ mu_sigma_x_of_qnodes  = mu_xy_of_qnodes.* sigma_x_of_qnodes;
 
 
 hobj.M  = hobj.fem.assema(1);
+
+
+% lump mass matrix
+hobj.M = diag(sum(hobj.M));
+
+
 hobj.Sm = hobj.fem.assems(mu_xy_of_qnodes);
 hobj.Mx = hobj.fem.assema(sigma_x_of_qnodes);
 hobj.My = hobj.fem.assema(sigma_y_of_qnodes);
@@ -53,7 +59,7 @@ hobj.Qy = sparse(J, I, Wy);
     end
 
     function ret = mu_xy(x, y)
-        ret = 1;
+        ret = 1 + 0.2 * (abs(x) <=0.5) .* (abs(y)<=0.5) .* sin(4* pi * x) .* sin(4* pi * y);
     end
 
 

@@ -50,8 +50,10 @@ source = source_fcn(fem.Promoted.nodes(1,:), fem.Promoted.nodes(2,:));
 
 % gmres
 tic;
-m = dom.si_build_omp(fem.Promoted.nodes, fem.Promoted.elems, sigma_t);
+[m] = dom.si_build_omp(fem.Promoted.nodes, fem.Promoted.elems, sigma_t);
+
 toc;
+
 
 
 
@@ -62,12 +64,13 @@ I = speye(size(m,1));
 % toc;
 tic;
 ret = gmres(I - m' * sparse(1:size(m,1), 1:size(m,1), sigma_s), (m' * (source')), 5, 1e-12, 400);
+%ret = gmres(I - m' , (t' * (source')), 5, 1e-12, 400);
 toc;
 
 trisurf(fem.TriMesh', fem.Promoted.nodes(1,:), fem.Promoted.nodes(2,:), ret,...
 'EdgeColor','none','LineStyle','none','FaceLighting','phong');shading interp;
 
-
+colormap('jet');colorbar;view(2);
 
 
 end

@@ -1,6 +1,6 @@
-function  ray_diffusion( )
+function  [ret] = ray_diffusion(fem, sigma_a, sigma_s)
 
-fem = FEM([0 0 1 0 1 1 0 1]', 1, 1/(2 * 128 * 128), []');
+%fem = FEM([0 0 1 0 1 1 0 1]', 1, 1/(2 * 128 * 128), []');
 
 boundary = Boundary();
 boundary.set_boundary('x - 1');
@@ -16,8 +16,8 @@ boundary.setDirichlet(bc3);
 boundary.setDirichlet(bc4);
 
 
-sigma_a_fcn = @(x, y) (0.1  + 0.0.*abs(cos(2*pi*x)));
-sigma_s_fcn = @(x, y) (5.0  + 0.0.*abs(sin(2*pi*x)));
+sigma_a_fcn = @(x, y) (sigma_a  +  0.0.*abs(cos(2*pi*x)));
+sigma_s_fcn = @(x, y) (sigma_s  +  0.0.*abs(sin(2*pi*x)));
 
 
 
@@ -46,11 +46,12 @@ DSA_K = fem.assems((1/3)./sigma_t_qnodes) + fem.assema(sigma_a_qnodes) + 0.5 * Q
 
 load = fem.asseml(source_q_nodes);
 
-u = DSA_K\load;
+ret = DSA_K\load;
 
 figure(2)
-trisurf(fem.TriMesh', fem.Promoted.nodes(1,:), fem.Promoted.nodes(2,:), u,...
-    'EdgeColor','none','LineStyle','none','FaceLighting','phong');shading interp
+trisurf(fem.TriMesh', fem.Promoted.nodes(1,:), fem.Promoted.nodes(2,:), ret,...
+    'EdgeColor','none','LineStyle','none','FaceLighting','phong');shading interp;colormap jet;
+colorbar;view(2);
 
 
 end

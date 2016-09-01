@@ -57,6 +57,16 @@ methods
       T = DiscreteOrinates_('si_build_omp', this.id_, nodes, elems, sigma_t);
       T = T/this.nAngle;
   end
+  
+  function [T, M] = ray_build_omp(this, nodes, elems, sigma_t, sigma_s)
+      [T, M] = DiscreteOrinates_('ray_build_omp', this.id_, nodes, elems, sigma_t, sigma_s);
+      T = T/this.nAngle;
+      M = M/this.nAngle;
+  end
+  
+  function g = ray_scatter_grad(this, nodes, elems, u, v, sigma_t)
+      g = DiscreteOrinates_('ray_scatter_grad', this.id_, nodes, elems, u, v, sigma_t);
+  end
   % Other methods...
 end
 end

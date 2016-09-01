@@ -172,7 +172,7 @@ void Assembler::Reference(MatlabPtr& F, MatlabPtr& DX, MatlabPtr Degree, MatlabP
 				*VanderX_ptr++ = 0.;
 			}
 			else{
-				*VanderX_ptr++ = pow(qnodes_ptr[col], i - 1);
+				*VanderX_ptr++ = i * pow(qnodes_ptr[col], i - 1);
 			}
 		}
 	}
@@ -389,6 +389,43 @@ void Assembler::AssembleMass(Real_t* &pI, Real_t* &pJ, Real_t* &pV,
 								weights[l];
 					}
 					*pV  = (*pV)*area;
+
+					pI++; pJ++; pV++;
+					if (k != j) {
+						*pI = *(pJ - 1);
+						*pJ = *(pI - 1);
+						*pV = *(pV - 1);
+						pI++; pJ++; pV++;
+					}
+
+				}
+			}
+		}
+	}
+	else if (mxGetNumberOfElements(Fcn) == numberofelem) {
+		for (size_t i = 0; i < numberofelem; i++) {
+			vertex_1 = pelem_ptr[numberofnodesperelem*i] - 1;
+			vertex_2 = pelem_ptr[numberofnodesperelem*i + 1] - 1;
+			vertex_3 = pelem_ptr[numberofnodesperelem*i + 2] - 1;
+
+			det = (pnodes_ptr[vertex_2*2] - pnodes_ptr[vertex_1*2])*(pnodes_ptr[vertex_3*2 + 1] - pnodes_ptr[vertex_1*2 + 1]) -
+					(pnodes_ptr[vertex_2*2 + 1] - pnodes_ptr[vertex_1*2 + 1])*(pnodes_ptr[vertex_3*2] - pnodes_ptr[vertex_1*2]);
+			area = 0.5*fabs(det);
+
+			auto r = Interp[i];
+			// Due to symmetric property, only need half of the work load.
+			for (size_t j = 0; j < numberofnodesperelem; j++){
+				for (size_t k = 0; k < j + 1; k++){
+					*pI = pelem_ptr[i*numberofnodesperelem + j];
+					*pJ = pelem_ptr[i*numberofnodesperelem + k];
+					*pV = 0.;
+					for (size_t l = 0; l < numberofqnodes; l++){
+						*pV = *pV +
+								reference[j+ l*numberofnodesperelem]*
+								reference[k+ l*numberofnodesperelem]*
+								weights[l];
+					}
+					*pV  = r*(*pV)*area;
 
 					pI++; pJ++; pV++;
 					if (k != j) {
@@ -642,6 +679,50 @@ void Assembler::AssembleStiff(Real_t* &pI, Real_t* &pJ, Real_t*&pV,
 								)*weights[l];
 					}
 					*pV = (*pV)/4.0/area;
+					pI++; pJ++; pV++;
+					if (j != k){
+						*pI = *(pJ - 1);
+						*pJ = *(pI - 1);
+						*pV = *(pV - 1);
+						pI++; pJ++; pV++;
+					}
+				}
+			}
+		}
+	}
+	else if (mxGetNumberOfElements(Fcn)  == numberofelem){
+		for (size_t i =0; i < numberofelem; i++){
+			// Fcn is a constant
+			vertex_1 = pelem_ptr[numberofnodesperelem*i] - 1;
+			vertex_2 = pelem_ptr[numberofnodesperelem*i + 1] - 1;
+			vertex_3 = pelem_ptr[numberofnodesperelem*i + 2] - 1;
+
+			Jacobian[0][0] = pnodes_ptr[2*vertex_3 + 1] - pnodes_ptr[2*vertex_1 + 1];
+			Jacobian[1][1] = pnodes_ptr[2*vertex_2    ] - pnodes_ptr[2*vertex_1    ];
+			Jacobian[0][1] = pnodes_ptr[2*vertex_1 + 1] - pnodes_ptr[2*vertex_2 + 1];
+			Jacobian[1][0] = pnodes_ptr[2*vertex_1    ] - pnodes_ptr[2*vertex_3    ];
+
+			// Orientation corrected.
+			det = Jacobian[0][0] * Jacobian[1][1] - Jacobian[0][1] * Jacobian[1][0];
+			area = 0.5*fabs(det);
+
+			auto r = Interp[i];
+			// Due to symmetric property, half of work load can be reduced
+			for (size_t j = 0; j < numberofnodesperelem; j++){
+				for (size_t k = 0; k < j + 1; k++){
+					*pI = pelem_ptr[i*numberofnodesperelem + j];
+					*pJ = pelem_ptr[i*numberofnodesperelem + k];
+					*pV = 0.;
+					for (size_t l = 0; l < numberofqnodes; l++){
+						*pV = *pV + (
+								(Jacobian[0][0]*referenceX[j+ l*numberofnodesperelem] + Jacobian[0][1]*referenceY[j+ l*numberofnodesperelem])*
+								(Jacobian[0][0]*referenceX[k+ l*numberofnodesperelem] + Jacobian[0][1]*referenceY[k+ l*numberofnodesperelem])
+								+
+								(Jacobian[1][0]*referenceX[j+ l*numberofnodesperelem] + Jacobian[1][1]*referenceY[j+ l*numberofnodesperelem])*
+								(Jacobian[1][0]*referenceX[k+ l*numberofnodesperelem] + Jacobian[1][1]*referenceY[k+ l*numberofnodesperelem])
+								)*weights[l];
+					}
+					*pV = r*(*pV)/4.0/area;
 					pI++; pJ++; pV++;
 					if (j != k){
 						*pI = *(pJ - 1);
@@ -1300,6 +1381,192 @@ void Assembler::AssembleLoadMatrix(Real_t*& pI, Real_t*& pJ, Real_t*& pV, Matlab
 void Assembler::AssembleMassEnergy(Real_t* &MassEnergy,
 		MatlabPtr Nodes, MatlabPtr Elems,MatlabPtr Ref,
 		MatlabPtr Weights, MatlabPtr QFcn, MatlabPtr PFcn){
+
+void Assembler::AssembleOverElement(Real_t*& w, MatlabPtr Nodes, MatlabPtr Elems,
+		MatlabPtr Ref, MatlabPtr RefX,
+		MatlabPtr RefY, MatlabPtr Weights, MatlabPtr Fcn_S, MatlabPtr Fcn_A, MatlabPtr u,
+		MatlabPtr v){
+
+
+	auto  pnodes_ptr           = mxGetPr(Nodes);
+	auto  pelem_ptr            = (int32_t*)mxGetPr(Elems);
+	auto  reference            = mxGetPr(Ref);
+	auto  referenceX           = mxGetPr(RefX);
+	auto  referenceY           = mxGetPr(RefY);
+	auto  weights              = mxGetPr(Weights);
+
+	auto  Interp_S             = mxGetPr(Fcn_S);
+	auto  Interp_A             = mxGetPr(Fcn_A);
+
+	auto numberofelem           = mxGetN(Elems);
+	auto numberofnodesperelem   = mxGetM(Elems);
+	auto numberofqnodes         = mxGetN(RefX);
+	auto ptru                   = mxGetPr(u);
+	auto ptrv                   = mxGetPr(v);
+
+
+	mwSize vertex_1, vertex_2, vertex_3;
+	Real_t det, area;
+	Real_t Jacobian[2][2];
+
+	if (mxGetNumberOfElements(Fcn_S)  == numberofelem &&
+			mxGetNumberOfElements(Fcn_A) == numberofelem) {
+		for (size_t i =0; i < numberofelem; i++){
+			// Fcn is a constant
+			vertex_1 = pelem_ptr[numberofnodesperelem*i] - 1;
+			vertex_2 = pelem_ptr[numberofnodesperelem*i + 1] - 1;
+			vertex_3 = pelem_ptr[numberofnodesperelem*i + 2] - 1;
+
+			Jacobian[0][0] = pnodes_ptr[2*vertex_3 + 1] - pnodes_ptr[2*vertex_1 + 1];
+			Jacobian[1][1] = pnodes_ptr[2*vertex_2    ] - pnodes_ptr[2*vertex_1    ];
+			Jacobian[0][1] = pnodes_ptr[2*vertex_1 + 1] - pnodes_ptr[2*vertex_2 + 1];
+			Jacobian[1][0] = pnodes_ptr[2*vertex_1    ] - pnodes_ptr[2*vertex_3    ];
+
+			// Orientation corrected.
+			det = Jacobian[0][0] * Jacobian[1][1] - Jacobian[0][1] * Jacobian[1][0];
+			area = 0.5*fabs(det);
+
+
+			auto a = Interp_A[i];
+			auto s = Interp_S[i];
+
+			int32_t I, J;
+			Real_t K1, K2, K;
+
+
+			w[i] = 0;
+			// Due to symmetric property, half of work load can be reduced
+			for (size_t j = 0; j < numberofnodesperelem; j++){
+				for (size_t k = 0; k < j + 1; k++){
+					I = pelem_ptr[i*numberofnodesperelem + j] - 1;
+					J = pelem_ptr[i*numberofnodesperelem + k] - 1;
+					K1 = 0.;
+					K2 = 0.;
+					for (size_t l = 0; l < numberofqnodes; l++){
+						K1 = K1 + (
+								(Jacobian[0][0]*referenceX[j+ l*numberofnodesperelem] + Jacobian[0][1]*referenceY[j+ l*numberofnodesperelem])*
+								(Jacobian[0][0]*referenceX[k+ l*numberofnodesperelem] + Jacobian[0][1]*referenceY[k+ l*numberofnodesperelem])
+								+
+								(Jacobian[1][0]*referenceX[j+ l*numberofnodesperelem] + Jacobian[1][1]*referenceY[j+ l*numberofnodesperelem])*
+								(Jacobian[1][0]*referenceX[k+ l*numberofnodesperelem] + Jacobian[1][1]*referenceY[k+ l*numberofnodesperelem])
+								)*weights[l];
+						K2 = K2 +
+								reference[j+ l*numberofnodesperelem]*
+								reference[k+ l*numberofnodesperelem]*
+								weights[l];
+					}
+					K1 = s*(K1)/4.0/area;
+					K2 = a*(K2) * area;
+					K  = K1 + K2;
+
+					w[i] += K * ptru[I] * ptrv[J];
+					if (j != k){
+						w[i] += K * ptru[J] * ptrv[I];
+					}
+				}
+			}
+		}
+	}
+}
+
+
+void Assembler::AssembleOverNode(Real_t*& w, MatlabPtr Nodes, MatlabPtr Elems,
+		MatlabPtr Ref, MatlabPtr RefX,
+		MatlabPtr RefY, MatlabPtr Weights, MatlabPtr Fcn_S, MatlabPtr Fcn_A,
+		MatlabPtr u, MatlabPtr v) {
+
+	auto  pnodes_ptr           = mxGetPr(Nodes);
+	auto  pelem_ptr            = (int32_t*)mxGetPr(Elems);
+	auto  reference            = mxGetPr(Ref);
+	auto  referenceX           = mxGetPr(RefX);
+	auto  referenceY           = mxGetPr(RefY);
+	auto  weights              = mxGetPr(Weights);
+
+	auto  Interp_S             = mxGetPr(Fcn_S);
+	auto  Interp_A             = mxGetPr(Fcn_A);
+
+	auto numberofelem           = mxGetN(Elems);
+	auto numberofnodesperelem   = mxGetM(Elems);
+	auto numberofnodes          = mxGetN(Nodes);
+	auto numberofqnodes         = mxGetN(RefX);
+	auto ptru                   = mxGetPr(u);
+	auto ptrv                   = mxGetPr(v);
+
+
+	mwSize vertex_1, vertex_2, vertex_3;
+	Real_t det, area;
+	Real_t Jacobian[2][2];
+
+	// for performance purpose, not to use fill
+	memset(w, 0,sizeof(Real_t) * numberofnodes);
+
+	if (mxGetNumberOfElements(Fcn_S)  == numberofnodes &&
+			mxGetNumberOfElements(Fcn_A) == numberofnodes) {
+
+		for (size_t i =0; i < numberofelem; i++){
+			// Fcn is a constant
+			vertex_1 = pelem_ptr[numberofnodesperelem*i] - 1;
+			vertex_2 = pelem_ptr[numberofnodesperelem*i + 1] - 1;
+			vertex_3 = pelem_ptr[numberofnodesperelem*i + 2] - 1;
+
+			Jacobian[0][0] = pnodes_ptr[2*vertex_3 + 1] - pnodes_ptr[2*vertex_1 + 1];
+			Jacobian[1][1] = pnodes_ptr[2*vertex_2    ] - pnodes_ptr[2*vertex_1    ];
+			Jacobian[0][1] = pnodes_ptr[2*vertex_1 + 1] - pnodes_ptr[2*vertex_2 + 1];
+			Jacobian[1][0] = pnodes_ptr[2*vertex_1    ] - pnodes_ptr[2*vertex_3    ];
+
+			// Orientation corrected.
+			det = Jacobian[0][0] * Jacobian[1][1] - Jacobian[0][1] * Jacobian[1][0];
+			area = 0.5*fabs(det);
+
+			int32_t I, J, K;
+			Real_t K1, K2, K3;
+
+			for (size_t j = 0; j < numberofnodesperelem; j++){
+				for (size_t k = 0; k < j + 1; k++){
+					I = pelem_ptr[i*numberofnodesperelem + j] - 1;
+					J = pelem_ptr[i*numberofnodesperelem + k] - 1;
+
+					/*
+					 * calculate (I,J) element
+					 */
+
+					/*
+					 * (I,J) element uses all qnodes.
+					 */
+					for (size_t l = 0; l < numberofqnodes; l++) {
+						/*
+						 * l-th component
+						 */
+						K1 =(
+							(Jacobian[0][0]*referenceX[j+ l*numberofnodesperelem] +
+							 Jacobian[0][1]*referenceY[j+ l*numberofnodesperelem])*
+							(Jacobian[0][0]*referenceX[k+ l*numberofnodesperelem] +
+							 Jacobian[0][1]*referenceY[k+ l*numberofnodesperelem])
+							+
+							(Jacobian[1][0]*referenceX[j+ l*numberofnodesperelem] +
+							 Jacobian[1][1]*referenceY[j+ l*numberofnodesperelem])*
+							(Jacobian[1][0]*referenceX[k+ l*numberofnodesperelem] +
+							 Jacobian[1][1]*referenceY[k+ l*numberofnodesperelem])
+							)*weights[l];
+						K2 = reference[j+ l*numberofnodesperelem]*
+							 reference[k+ l*numberofnodesperelem]*
+							 weights[l];
+						for (size_t m = 0; m < numberofnodesperelem; m++) {
+							// m th node in this element
+							K = pelem_ptr[numberofnodesperelem * i + m] - 1;
+							K3  = reference[m + l * numberofnodesperelem] *
+									(Interp_S[K] * (K1/4.0/area) + Interp_A[K] * K2 * area);
+							w[K] += K3 * ptru[I] * ptrv[J];
+							if (j != k) {
+								w[K] += K3 * ptru[J] * ptrv[I];
+							}
+						}// end of m
+					}// end of l
+				}// end of k
+			}//end of j
+		}//end of i
+	}
+}
 
 
 	auto  pnodes_ptr           = mxGetPr(Nodes);
@@ -2315,6 +2582,48 @@ MEX_DEFINE(assemex_lm) (int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs
 
 }
 
+MEX_DEFINE(assemloe)(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
+	InputArguments input(nrhs, prhs, 11);
+	OutputArguments output(nlhs, plhs, 1);
+	Assembler* assembler = Session<Assembler>::get(input.get(0));
+
+	size_t numberofnodes          = mxGetN(prhs[1]);
+	size_t numberofelem           = mxGetN(prhs[2]);
+	size_t numberofnodesperelem   = mxGetM(prhs[2]);
+	size_t numberofqnodes         = mxGetM(prhs[3]);
+
+	plhs[0] = mxCreateNumericMatrix(numberofelem, 1, mxDOUBLE_CLASS, mxREAL);
+	Real_t* w = mxGetPr(plhs[0]);
+
+	assembler->AssembleOverElement(w, CAST(prhs[1]),
+			CAST(prhs[2]), CAST(prhs[3]),
+			CAST(prhs[4]), CAST(prhs[5]),
+			CAST(prhs[6]), CAST(prhs[7]), CAST(prhs[8]),
+			CAST(prhs[9]), CAST(prhs[10]));
+
+}
+
+
+MEX_DEFINE(assemlon)(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
+	InputArguments input(nrhs, prhs, 11);
+	OutputArguments output(nlhs, plhs, 1);
+	Assembler* assembler = Session<Assembler>::get(input.get(0));
+
+	size_t numberofnodes          = mxGetN(prhs[1]);
+	size_t numberofelem           = mxGetN(prhs[2]);
+	size_t numberofnodesperelem   = mxGetM(prhs[2]);
+	size_t numberofqnodes         = mxGetM(prhs[3]);
+
+	plhs[0] = mxCreateNumericMatrix(numberofnodes, 1, mxDOUBLE_CLASS, mxREAL);
+	Real_t* w = mxGetPr(plhs[0]);
+
+	assembler->AssembleOverNode(w, CAST(prhs[1]),
+			CAST(prhs[2]), CAST(prhs[3]),
+			CAST(prhs[4]), CAST(prhs[5]),
+			CAST(prhs[6]), CAST(prhs[7]), CAST(prhs[8]),
+			CAST(prhs[9]), CAST(prhs[10]));
+
+}
 }
 
 

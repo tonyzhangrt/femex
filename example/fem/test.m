@@ -2,11 +2,15 @@
 % TEST solves Neumann/Dirichlet/Robin boundary condition PDE with h-p
 % finite element method.
 
+<<<<<<< HEAD
 prec = 2;
 min_area = 1/(2*40*40);
 
 
 addpath(genpath('~/Documents/github/femex'));
+=======
+%addpath(genpath('../../'));
+>>>>>>> e030124f00a7cdee8a4071b678c1668d879be73e
 
 fem = FEM([0 0 1 0 1 1 0 1]', prec, min_area, [-0.25 -0.25 1.25 -0.25 1.25 1.25 -0.25 1.25]'); % fem with pml
 
@@ -89,8 +93,8 @@ toc;
 [GX, GY] = solver.grad(fem.Solution, fem.Promoted.nodes, fem.Promoted.elems, DX, DY);
 % solver.delete();
 
-disp(norm(fem.Solution(1:numofnodes) - v(1:numofnodes)')/sqrt(double(numofnodes)));
-
+fprintf('The L2 norm of error is %6.8f.\n', norm(fem.Solution(1:numofnodes) -...
+    v(1:numofnodes)')/sqrt(double(numofnodes)));
 
 %%% use MA57
 % control.order = 0; % AMD control.ordering
@@ -155,7 +159,7 @@ disp(norm(fem.Solution(1:numofnodes) - v(1:numofnodes)')/sqrt(double(numofnodes)
 % toc;
 
 
-disp(norm(fem.Solution(1:numofnodes) - v(1:numofnodes)')/sqrt(double(numofnodes)));
+% disp(norm(fem.Solution(1:numofnodes) - v(1:numofnodes)')/sqrt(double(numofnodes)));
 
 % needs to allocate memory for u and v.
 
