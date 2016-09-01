@@ -1378,10 +1378,6 @@ void Assembler::AssembleLoadMatrix(Real_t*& pI, Real_t*& pJ, Real_t*& pV, Matlab
 	}
 }
 
-void Assembler::AssembleMassEnergy(Real_t* &MassEnergy,
-		MatlabPtr Nodes, MatlabPtr Elems,MatlabPtr Ref,
-		MatlabPtr Weights, MatlabPtr QFcn, MatlabPtr PFcn){
-
 void Assembler::AssembleOverElement(Real_t*& w, MatlabPtr Nodes, MatlabPtr Elems,
 		MatlabPtr Ref, MatlabPtr RefX,
 		MatlabPtr RefY, MatlabPtr Weights, MatlabPtr Fcn_S, MatlabPtr Fcn_A, MatlabPtr u,
@@ -1568,6 +1564,9 @@ void Assembler::AssembleOverNode(Real_t*& w, MatlabPtr Nodes, MatlabPtr Elems,
 	}
 }
 
+void Assembler::AssembleMassEnergy(Real_t* &MassEnergy,
+		MatlabPtr Nodes, MatlabPtr Elems,MatlabPtr Ref,
+		MatlabPtr Weights, MatlabPtr QFcn, MatlabPtr PFcn){
 
 	auto  pnodes_ptr           = mxGetPr(Nodes);
 	auto  pelem_ptr            = (int32_t*)mxGetPr(Elems);
